@@ -17,12 +17,13 @@ namespace CheckMail
     {
         public string Source  = "";
 
-        public string MessageState = "";
-        public string Date = "";
-        public string From = "";
-        public string To = "";
-        public string Cc = "";
-        public string Subject = "";
+        public string Date          = "";
+        public string DateOrignal   = "";
+        public string From          = "";
+        public string To            = "";
+        public string Cc            = "";
+        public string Subject       = "";
+        public int    Size          = 0;
 
         public List<string> Message = new List<string>();
 
@@ -33,6 +34,29 @@ namespace CheckMail
         public MailData( string Source )
         {
             this.Source = Source;
+        }
+
+        public bool IsSameMail( MailData mail )
+        {
+            if( this.Subject != mail.Subject )
+                return false;
+
+            if( this.DateOrignal != mail.DateOrignal )
+                return false;
+
+            if( this.From != mail.From )
+                return false;
+
+            if( this.To != mail.To )
+                return false;
+
+            if( this.Cc != mail.Cc )
+                return false;
+
+            if( this.Size != mail.Size )
+                return false;
+
+            return true;
         }
 
         public bool WriteSource( string fname )
@@ -54,6 +78,27 @@ namespace CheckMail
             return HelpLib.WriteFileLine( fname, Lines );
         }
 
+
+        public bool ReadSource( string fname )
+        {
+            List < string > Lines = new List<string>();
+
+            if( !HelpLib.ReadFileLine( fname, ref Lines ) )
+                return false;
+
+            string data = "";
+
+            foreach( string line in Lines )
+            {
+                data += line;
+                data += "\r\n";
+            }
+
+            this.Source = data;
+
+            return true;
+        }
+
         public bool ConvertSourceToData()
         {
             try
@@ -70,12 +115,7 @@ namespace CheckMail
                     item = this.Source.Substring( pos, pos_new - pos );
                     pos = pos_new + 2;
 
-                    if( MessageState.Length == 0 )
-                    {
-                        MessageState = item;
-                        continue;
-                    }
-                    else if( header_flg && item.Length == 0 )
+                    if( header_flg && item.Length == 0 )
                     {
                         header_flg = false;
                         continue;
@@ -89,55 +129,60 @@ namespace CheckMail
                         }
                         else
                         {
-                            if( (pos_item = item.IndexOf( ":" )) <= 0 )
-                                continue;
-
-                            key = item.Substring( 0, pos_item );
-                            key2 = "";
-
-                            if( item.Length <= pos_item + 2 )
+                            if( (pos_item = item.IndexOf( ":" )) > 0 )
                             {
-                                value = "";
-                                continue;
-                            }
+                                key = item.Substring( 0, pos_item ).ToLower();
+                                key2 = "";
 
-                            value = item.Substring( pos_item + 2 );
-
-                            if( key == "Content-Type" )
-                            {
-                                if( (pos_item = value.IndexOf( ";" )) <= 0 )
+                                if( item.Length <= pos_item + 2 )
+                                {
+                                    value = "";
                                     continue;
+                                }
 
-                                key2 = value.Substring( 0, pos_item );
-                                value = value.Substring( pos_item + 1 );
+                                value = item.Substring( pos_item + 2 );
+
+                                if( key == "content-type" )
+                                {
+                                    if( (pos_item = value.IndexOf( ";" )) <= 0 )
+                                        continue;
+
+                                    key2 = value.Substring( 0, pos_item );
+                                    value = value.Substring( pos_item + 1 );
+                                }
+                            }
+                            else
+                            {
+                                value = item;
                             }
                         }
 
-                        if( key == "Date" )
+                        if( key == "date" )
                         {
-                            this.Date = value;
+                            this.DateOrignal = value;
+                            this.Date = ConvertStringDate( value );
                         }
-                        else if( key == "From" )
+                        else if( key == "from" )
                         {
                             DecodeHeader( ref value );
-                            this.From = value;
+                            this.From += value;
                         }
-                        else if( key == "To" )
+                        else if( key == "to" )
                         {
                             DecodeHeader( ref value );
                             this.To += value;
                         }
-                        else if( key == "Cc" )
+                        else if( key == "cc" )
                         {
                             DecodeHeader( ref value );
                             this.Cc += value;
                         }
-                        else if( key == "Subject" )
+                        else if( key == "subject" )
                         {
                             DecodeHeader( ref value );
                             this.Subject += value;
                         }
-                        else if( key == "Content-Type" )
+                        else if( key == "content-type" )
                         {
                             if( key2 == "text/html" || key2 == "text/plain" )
                             {
@@ -168,11 +213,13 @@ namespace CheckMail
                         //this.Message.Add( item );
                     }
                 }
-            }
-            catch
-            {
-                return false;
-            }
+
+                this.Size = this.Source.ToCharArray().Length;
+           }
+           catch
+           {
+               return false;
+           }
 
             return true;
         }
@@ -210,12 +257,12 @@ namespace CheckMail
                     pos = pos_new + splits[i].Length;
                 }
 
-                if( items[1] == "B" )
+                if( items[1] == "B" || items[1] == "b" )
                 {
                     byte[] b = System.Convert.FromBase64String( items[2] );
                     result += System.Text.Encoding.GetEncoding( items[0] ).GetString( b );
                 }
-                else if( items[1] == "Q" )
+                else if( items[1] == "Q" || items[1] == "q" )
                 {
                     result += DecodeQuotedPrintable( items[2], items[0] );
                 }
@@ -281,6 +328,63 @@ namespace CheckMail
             }
 
             return Uri.UnescapeDataString( input );
+        }
+
+        private static string ConvertStringDate( string input )
+        {
+            string result, input2;
+            int pos;
+
+            input2 = input;
+
+            try
+            {
+                if( (pos = input2.IndexOf( "(" )) > 0 )
+                {
+                    input2 = input2.Substring( 0, pos );
+                    input2 = input2.Trim();
+                }
+
+                if( (pos = input2.IndexOf( "," )) > 0 )
+                {
+                    input2 = input2.Substring( pos + 1 );
+                    input2 = input2.Trim();
+                }
+
+                string[] expectedFormats = { "d MMM yyyy HH':'mm':'ss zzz", "r" };
+                DateTime dt = System.DateTime.ParseExact(input2, expectedFormats,
+                                        System.Globalization.DateTimeFormatInfo.InvariantInfo,
+                                        System.Globalization.DateTimeStyles.None );
+
+                result = dt.ToString( "yyyy/MM/dd ddd HH:mm" );
+            }
+            catch
+            {
+                result = input;
+            }
+
+            return result;
+        }
+
+        public string GetStringSize()
+        {
+            if( this.Size < 1024 )
+            {
+                return string.Format( "{0} B", this.Size );
+            }
+            else if( this.Size < 1024 * 1024 )
+            {
+                return string.Format( "{0:F1} KB", (double)this.Size / (double)( 1024 ) );
+            }
+            else if( this.Size < 1024 * 1024 * 1024 )
+            {
+                return string.Format( "{0:F1} MB", (double)this.Size / (double)(1024 * 1024) );
+            }
+            else
+            {
+                return string.Format( "{0:F1} GB", (double)this.Size / (double)(1024 * 1024 * 1024) );
+            }
+
         }
     }
 }

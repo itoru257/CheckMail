@@ -33,6 +33,7 @@ namespace CheckMail
                     Console.WriteLine( "From:    {0}", mail.From );
                     Console.WriteLine( "To:      {0}", mail.To );
                     Console.WriteLine( "Cc:      {0}", mail.Cc );
+                    Console.WriteLine( "Size:    {0}", mail.GetStringSize() );
                 }
             }
             else
