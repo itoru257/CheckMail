@@ -1,5 +1,5 @@
 ﻿/*************************************************
-* Copyright (c) 2016 Toru Ito
+* Copyright (c) 2017 Toru Ito
 * Released under the MIT license
 * http://opensource.org/licenses/mit-license.php
 *************************************************/
@@ -62,7 +62,7 @@ namespace CheckMail
                 for( i = 1; i <= numMail; ++i )
                 {
                     SendData( stream, "RETR " + i.ToString() + "\r\n" );
-                    message = ReceiveMultiLineData( stream );
+                    message = ReceiveMultiLineData( stream, true );
 
                     MailData mail = new MailData(message);
                     if( mail.ConvertSourceToData() )
@@ -91,25 +91,66 @@ namespace CheckMail
             return result;
         }
 
-        private static string ReceiveMultiLineData( NetworkStream stream )
+        private static string ReceiveMultiLineData( NetworkStream stream, bool ReceiveByteFlg = false )
         {
             byte[] data = new byte[1024];
             String responseData = String.Empty;
 
-            do
+            if( ReceiveByteFlg )
             {
-                Int32 bytes = stream.Read(data, 0, data.Length);
+                bool InitReceiveByte = true;
+                Int32 ReceiveByteTotal = 0, ReceiveByteSize = 0;
+                int pos;
 
-                if( bytes > 0 )
+                do
                 {
-                    responseData += Encoding.ASCII.GetString( data, 0, bytes );
-                }
-                else
-                {
-                    throw new Exception( "Read Error." );
-                }
+                    Int32 bytes = stream.Read( data, 0, data.Length );
 
-            } while( responseData.EndsWith( "\r\n" + "." + "\r\n" ) == false );
+                    if( bytes > 0 )
+                    {
+                        responseData += Encoding.ASCII.GetString( data, 0, bytes );
+                        ReceiveByteTotal += bytes;
+
+                        if( InitReceiveByte )
+                        {
+                            InitReceiveByte = false;
+
+                            if( !responseData.StartsWith( "+OK" ) || ( pos = responseData.IndexOf( "\r\n" ) ) < 0 )
+                            {
+                                throw new Exception( "Received Error" );
+                            }
+
+                            string message = responseData.Substring( 0, pos );
+                            ReceiveByteSize = int.Parse( message.Split( ' ' )[1] );
+                            ReceiveByteSize += pos + 5;
+                        }
+                    }
+                    else
+                    {
+                        throw new Exception( "Read Error." );
+                    }
+
+                } while( ReceiveByteTotal < ReceiveByteSize );
+
+                //Console.WriteLine( "Received bytes: {0}", ReceiveByteTotal );
+            }
+            else
+            {
+                do
+                {
+                    Int32 bytes = stream.Read( data, 0, data.Length );
+
+                    if( bytes > 0 )
+                    {
+                        responseData += Encoding.ASCII.GetString( data, 0, bytes );
+                    }
+                    else
+                    {
+                        throw new Exception( "Read Error." );
+                    }
+
+                } while( responseData.EndsWith( "\r\n" + "." + "\r\n" ) == false );
+            }
 
             //Console.WriteLine( "Received: {0}", responseData );
 
